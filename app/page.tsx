@@ -1,14 +1,32 @@
-import dynamic from 'next/dynamic';
+'use client';
 
-const SpeedTest = dynamic(() => import('../components/SpeedTest'), {
+import dynamic from 'next/dynamic';
+import { useLocale } from '@/app/i18n/LocaleContext';
+import { translations } from '@/app/i18n/translations';
+import ThemeToggle from '@/components/ThemeToggle';
+
+const SpeedTest = dynamic(() => import('@/components/SpeedTest'), {
   ssr: false,
 });
 
 export default function Home() {
+  const { locale } = useLocale();
+  const t = translations[locale];
+
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center p-24 bg-black text-white">
-      <h1 className="text-4xl font-bold mb-8">Faster.co.kr</h1>
-      <SpeedTest />
+    <main className="min-h-screen bg-white dark:bg-black flex flex-col items-center justify-center p-4">
+      <ThemeToggle />
+      <div className="w-full">
+        <div className="text-center mb-16">
+          <h1 className="text-3xl md:text-4xl font-bold text-red-600 dark:text-red-500 mb-4">
+            FASTER.CO.KR
+          </h1>
+          <p className="text-gray-600 dark:text-gray-400">
+            {t.title}
+          </p>
+        </div>
+        <SpeedTest />
+      </div>
     </main>
   );
 } 
