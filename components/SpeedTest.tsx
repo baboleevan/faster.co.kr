@@ -11,8 +11,9 @@ import DeviceInfo from '@/components/DeviceInfo';
 interface SpeedTestState {
   downloadSpeed: number | null;
   uploadSpeed: number | null;
-  progress: number;
-  status: 'idle' | 'downloading' | 'uploading' | 'complete';
+  downloadProgress: number;
+  uploadProgress: number;
+  status: 'idle' | 'testing' | 'complete';
   error: string | null;
 }
 
@@ -24,13 +25,13 @@ const SpeedTest = () => {
   const [state, setState] = useState<SpeedTestState>({
     downloadSpeed: null,
     uploadSpeed: null,
-    progress: 0,
+    downloadProgress: 0,
+    uploadProgress: 0,
     status: 'idle',
     error: null,
   });
 
   const measureDownloadSpeed = async () => {
-    setState(prev => ({ ...prev, status: 'downloading', progress: 0 }));
     const testFileSize = 100 * 1024 * 1024; // 100MB
     const startTime = performance.now();
     let downloadedSize = 0;
@@ -51,12 +52,9 @@ const SpeedTest = () => {
         setState(prev => ({
           ...prev,
           downloadSpeed: speedMbps,
-          progress: Math.min(progress, 100),
+          downloadProgress: Math.min(progress, 100),
         }));
       }
-
-      // 다운로드 테스트 완료 후 업로드 테스트 시작
-      await measureUploadSpeed();
     } catch (error) {
       setState(prev => ({ ...prev, error: t.downloadError }));
       throw error;
@@ -73,7 +71,6 @@ const SpeedTest = () => {
   }, []);
 
   const measureUploadSpeed = async () => {
-    setState(prev => ({ ...prev, status: 'uploading', progress: 0 }));
     const testFileSize = 25 * 1024 * 1024; // 25MB
     const chunkSize = 256 * 1024; // 256KB chunks
     const startTime = performance.now();
@@ -105,14 +102,12 @@ const SpeedTest = () => {
         setState(prev => ({
           ...prev,
           uploadSpeed: speedMbps,
-          progress: Math.min(progress, 100),
+          uploadProgress: Math.min(progress, 100),
         }));
 
         // 브라우저가 UI를 업데이트할 수 있도록 잠시 대기
         await new Promise(resolve => setTimeout(resolve, 10));
       }
-
-      setState(prev => ({ ...prev, status: 'complete' }));
     } catch (error) {
       console.error('Upload error:', error);
       setState(prev => ({ ...prev, error: t.uploadError }));
@@ -124,13 +119,19 @@ const SpeedTest = () => {
     setState({
       downloadSpeed: null,
       uploadSpeed: null,
-      progress: 0,
-      status: 'downloading',
+      downloadProgress: 0,
+      uploadProgress: 0,
+      status: 'testing',
       error: null,
     });
 
     try {
-      await measureDownloadSpeed();
+      // 다운로드와 업로드 테스트를 동시에 시작
+      await Promise.all([
+        measureDownloadSpeed(),
+        measureUploadSpeed()
+      ]);
+      setState(prev => ({ ...prev, status: 'complete' }));
     } catch (error) {
       console.error('Speed test error:', error);
     }
@@ -146,16 +147,15 @@ const SpeedTest = () => {
     return (mbps / 8).toLocaleString('ko-KR', { maximumFractionDigits: 1 });
   };
 
-  const SpeedGauge = ({ speed, progress }: { speed: number | null; progress: number }) => {
+  const SpeedGauge = ({ speed, progress, label }: { speed: number | null; progress: number; label: string }) => {
     const radius = 140;
     const strokeWidth = 12;
     const normalizedProgress = Math.min(100, Math.max(0, progress));
     const circumference = 2 * Math.PI * radius;
     const progressOffset = circumference - (normalizedProgress / 100) * circumference;
-    const startAngle = -180; // 반원 시작 각도
-    const endAngle = 0;   // 반원 끝 각도
+    const startAngle = -180;
+    const endAngle = 0;
     
-    // SVG path for semi-circle
     const describeArc = (x: number, y: number, radius: number, startAngle: number, endAngle: number) => {
       const start = polarToCartesian(x, y, radius, endAngle);
       const end = polarToCartesian(x, y, radius, startAngle);
@@ -177,66 +177,67 @@ const SpeedTest = () => {
     const speedMarkers = [0, 100, 200, 300, 400, 500];
 
     return (
-      <div className="relative w-[300px] h-[300px]">
-        <svg
-          width="300"
-          height="300"
-          viewBox="0 0 300 300"
-          className="transform -rotate-180"
-        >
-          {/* Background track */}
-          <path
-            d={describeArc(150, 150, radius, startAngle, endAngle)}
-            fill="none"
-            stroke="currentColor"
-            strokeWidth={strokeWidth}
-            className="text-gray-200 dark:text-gray-800"
-          />
-          
-          {/* Progress track */}
-          <motion.path
-            d={describeArc(150, 150, radius, startAngle, endAngle)}
-            fill="none"
-            stroke="currentColor"
-            strokeWidth={strokeWidth}
-            strokeDasharray={circumference}
-            strokeDashoffset={progressOffset}
-            className="text-purple-600 dark:text-purple-500"
-            initial={{ strokeDashoffset: circumference }}
-            animate={{ strokeDashoffset: progressOffset }}
-            transition={{ duration: 0.5 }}
-          />
+      <div className="flex flex-col items-center">
+        <div className="text-lg text-gray-600 dark:text-gray-400 mb-4">
+          {label}
+        </div>
+        <div className="relative w-[300px] h-[300px]">
+          <svg
+            width="300"
+            height="300"
+            viewBox="0 0 300 300"
+            className="transform -rotate-180"
+          >
+            <path
+              d={describeArc(150, 150, radius, startAngle, endAngle)}
+              fill="none"
+              stroke="currentColor"
+              strokeWidth={strokeWidth}
+              className="text-gray-200 dark:text-gray-800"
+            />
+            
+            <motion.path
+              d={describeArc(150, 150, radius, startAngle, endAngle)}
+              fill="none"
+              stroke="currentColor"
+              strokeWidth={strokeWidth}
+              strokeDasharray={circumference}
+              strokeDashoffset={progressOffset}
+              className="text-purple-600 dark:text-purple-500"
+              initial={{ strokeDashoffset: circumference }}
+              animate={{ strokeDashoffset: progressOffset }}
+              transition={{ duration: 0.5 }}
+            />
 
-          {/* Speed markers */}
-          {speedMarkers.map((markerSpeed, index) => {
-            const angle = startAngle + (endAngle - startAngle) * (index / (speedMarkers.length - 1));
-            const point = polarToCartesian(150, 150, radius + 20, angle);
-            return (
-              <text
-                key={markerSpeed}
-                x={point.x}
-                y={point.y}
-                textAnchor="middle"
-                dominantBaseline="middle"
-                className="text-xs fill-gray-500 dark:fill-gray-400"
-                transform={`rotate(180 ${point.x} ${point.y})`}
-              >
-                {markerSpeed}
-              </text>
-            );
-          })}
-        </svg>
+            {speedMarkers.map((markerSpeed, index) => {
+              const angle = startAngle + (endAngle - startAngle) * (index / (speedMarkers.length - 1));
+              const point = polarToCartesian(150, 150, radius + 20, angle);
+              return (
+                <text
+                  key={markerSpeed}
+                  x={point.x}
+                  y={point.y}
+                  textAnchor="middle"
+                  dominantBaseline="middle"
+                  className="text-xs fill-gray-500 dark:fill-gray-400"
+                  transform={`rotate(180 ${point.x} ${point.y})`}
+                >
+                  {markerSpeed}
+                </text>
+              );
+            })}
+          </svg>
 
-        {/* Speed display */}
-        <div className="absolute inset-0 flex flex-col items-center justify-center text-center transform rotate-180">
-          <div className="transform rotate-180">
-            <div className="text-5xl font-bold tabular-nums text-gray-900 dark:text-white">
-              {formatSpeed(speed)}
-            </div>
-            <div className="flex justify-center items-center gap-4 text-sm text-gray-500 dark:text-gray-400 mt-2">
-              <span>Mbps</span>
-              <span className="w-px h-4 bg-gray-300 dark:bg-gray-700" />
-              <span>{convertToMB(speed)} MB/s</span>
+          <div className="absolute inset-0 flex flex-col items-center justify-center text-center transform rotate-180">
+            <div className="transform rotate-180">
+              <div className="text-5xl font-bold tabular-nums text-gray-900 dark:text-white">
+                {formatSpeed(speed)}
+              </div>
+              <div className="flex justify-center items-center gap-4 text-sm text-gray-500 dark:text-gray-400 mt-2">
+                <span>Mbps</span>
+                <span className="w-px h-4 bg-gray-300 dark:bg-gray-700" />
+                <span>{convertToMB(speed)} MB/s</span>
+              </div>
             </div>
           </div>
         </div>
@@ -245,7 +246,7 @@ const SpeedTest = () => {
   };
 
   return (
-    <div className="w-full max-w-3xl mx-auto px-4">
+    <div className="w-full max-w-6xl mx-auto px-4">
       <AnimatePresence mode="wait">
         {state.status === 'idle' && (
           <motion.div
@@ -265,22 +266,23 @@ const SpeedTest = () => {
           </motion.div>
         )}
 
-        {(state.status === 'downloading' || state.status === 'uploading') && (
+        {state.status === 'testing' && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="space-y-8"
+            className="grid grid-cols-1 md:grid-cols-2 gap-8"
           >
-            <div className="flex flex-col items-center">
-              <SpeedGauge 
-                speed={state.status === 'downloading' ? state.downloadSpeed : state.uploadSpeed}
-                progress={state.progress}
-              />
-              <div className="text-lg text-gray-600 dark:text-gray-400 mt-8">
-                {state.status === 'downloading' ? t.downloading : t.uploading}
-              </div>
-            </div>
+            <SpeedGauge 
+              speed={state.downloadSpeed}
+              progress={state.downloadProgress}
+              label={t.downloading}
+            />
+            <SpeedGauge 
+              speed={state.uploadSpeed}
+              progress={state.uploadProgress}
+              label={t.uploading}
+            />
           </motion.div>
         )}
 
@@ -291,7 +293,7 @@ const SpeedTest = () => {
             exit={{ opacity: 0 }}
             className="space-y-12"
           >
-            <div className="grid grid-cols-2 gap-8">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
               <div className="flex flex-col items-center">
                 <div className="text-sm text-gray-500 dark:text-gray-400 mb-2">{t.download}</div>
                 <div className="text-4xl font-bold text-gray-900 dark:text-white tabular-nums">

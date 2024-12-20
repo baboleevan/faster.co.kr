@@ -32,7 +32,7 @@ export function generateMetadata({ params }: { params: { locale?: string } }): M
   const t = translations[locale as keyof typeof translations]
 
   return {
-    title: `Faster.co.kr - ${t.title}`,
+    title: `faster.co.kr - ${t.title}`,
     description: t.description,
   }
 }

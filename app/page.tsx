@@ -19,14 +19,11 @@ export default function Home() {
       <div className="w-full">
         <div className="text-center mb-16">
           <h1 className="text-3xl md:text-4xl font-bold text-red-600 dark:text-red-500 mb-4">
-            FASTER.CO.KR
-          </h1>
-          <p className="text-gray-600 dark:text-gray-400">
             {t.title}
-          </p>
+          </h1>
         </div>
         <SpeedTest />
       </div>
     </main>
   );
-} 
+}
