@@ -7,10 +7,17 @@ import { useLocale } from '@/app/i18n/LocaleContext';
 import { translations } from '@/app/i18n/translations';
 import DeviceInfo from '@/components/DeviceInfo';
 
+// Constants for speed test
+const DOWNLOAD_TEST_SIZE = 25 * 1024 * 1024; // 25MB
+const UPLOAD_TEST_SIZE = 10 * 1024 * 1024;   // 10MB
+const CHUNK_SIZE = 128 * 1024;               // 128KB chunks
+const MIN_TEST_DURATION = 5000;              // 최소 5초 동안 테스트
+const SPEED_UPDATE_INTERVAL = 200;           // 200ms마다 속도 업데이트
+
 // Types
 interface SpeedTestState {
   downloadSpeed: number | null;
-  uploadSpeed: number | null;
+  uploadSpeed: null | number;
   downloadProgress: number;
   uploadProgress: number;
   status: 'idle' | 'testing' | 'complete';
@@ -31,13 +38,20 @@ const SpeedTest = () => {
     error: null,
   });
 
+  const calculateSpeed = (bytes: number, milliseconds: number): number => {
+    const seconds = milliseconds / 1000;
+    const bits = bytes * 8;
+    return (bits / seconds) / (1024 * 1024); // Mbps
+  };
+
   const measureDownloadSpeed = async () => {
-    const testFileSize = 100 * 1024 * 1024; // 100MB
     const startTime = performance.now();
     let downloadedSize = 0;
+    let lastUpdate = startTime;
+    let testEndTime = startTime + MIN_TEST_DURATION;
 
     try {
-      while (downloadedSize < testFileSize) {
+      while (performance.now() < testEndTime || downloadedSize < DOWNLOAD_TEST_SIZE) {
         const response = await fetch('/api/speedtest');
         if (!response.ok) throw new Error(t.downloadError);
         
@@ -45,15 +59,18 @@ const SpeedTest = () => {
         downloadedSize += chunk.size;
         
         const currentTime = performance.now();
-        const timeDiff = (currentTime - startTime) / 1000; // seconds
-        const speedMbps = (downloadedSize * 8) / (1024 * 1024 * timeDiff);
-        const progress = (downloadedSize / testFileSize) * 100;
-
-        setState(prev => ({
-          ...prev,
-          downloadSpeed: speedMbps,
-          downloadProgress: Math.min(progress, 100),
-        }));
+        if (currentTime - lastUpdate >= SPEED_UPDATE_INTERVAL) {
+          const speed = calculateSpeed(downloadedSize, currentTime - startTime);
+          const progress = Math.min((downloadedSize / DOWNLOAD_TEST_SIZE) * 100, 100);
+          
+          setState(prev => ({
+            ...prev,
+            downloadSpeed: speed,
+            downloadProgress: progress,
+          }));
+          
+          lastUpdate = currentTime;
+        }
       }
     } catch (error) {
       setState(prev => ({ ...prev, error: t.downloadError }));
@@ -71,14 +88,14 @@ const SpeedTest = () => {
   }, []);
 
   const measureUploadSpeed = async () => {
-    const testFileSize = 25 * 1024 * 1024; // 25MB
-    const chunkSize = 256 * 1024; // 256KB chunks
     const startTime = performance.now();
     let uploadedSize = 0;
+    let lastUpdate = startTime;
+    let testEndTime = startTime + MIN_TEST_DURATION;
 
     try {
-      while (uploadedSize < testFileSize) {
-        const chunk = generateRandomData(Math.min(chunkSize, testFileSize - uploadedSize));
+      while (performance.now() < testEndTime || uploadedSize < UPLOAD_TEST_SIZE) {
+        const chunk = generateRandomData(Math.min(CHUNK_SIZE, UPLOAD_TEST_SIZE - uploadedSize));
         
         const response = await fetch('/api/speedtest/upload', {
           method: 'POST',
@@ -95,15 +112,19 @@ const SpeedTest = () => {
         
         uploadedSize += chunk.length;
         const currentTime = performance.now();
-        const timeDiff = (currentTime - startTime) / 1000;
-        const speedMbps = (uploadedSize * 8) / (1024 * 1024 * timeDiff);
-        const progress = (uploadedSize / testFileSize) * 100;
-
-        setState(prev => ({
-          ...prev,
-          uploadSpeed: speedMbps,
-          uploadProgress: Math.min(progress, 100),
-        }));
+        
+        if (currentTime - lastUpdate >= SPEED_UPDATE_INTERVAL) {
+          const speed = calculateSpeed(uploadedSize, currentTime - startTime);
+          const progress = Math.min((uploadedSize / UPLOAD_TEST_SIZE) * 100, 100);
+          
+          setState(prev => ({
+            ...prev,
+            uploadSpeed: speed,
+            uploadProgress: progress,
+          }));
+          
+          lastUpdate = currentTime;
+        }
 
         // 브라우저가 UI를 업데이트할 수 있도록 잠시 대기
         await new Promise(resolve => setTimeout(resolve, 10));
